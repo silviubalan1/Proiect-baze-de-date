@@ -1,0 +1,298 @@
+CREATE TABLE Proprietar (
+    id_proprietar INT(6) ,
+    nume VARCHAR(50) not null,
+    email VARCHAR(100) not null 
+)
+CREATE TABLE Apartament (
+    id_ap INT(6) ,
+    adresa VARCHAR(200) NOT NULL,
+    nr_ap INT(3) NOT NULL,
+    suprafata INT(6) NOT NULL,
+    id_proprietar INT(6) NOT NULL
+)
+CREATE TABLE Consum (
+    id_ap INT(6),
+    an INT(4) NOT NULL,
+    luna INT(2) NOT NULL,
+    nr_pers INT(2) NOT NULL,
+    cantitate INT(6) NOT NULL,
+    valoare DOUBLE(10, 2) NOT NULL,
+    pret_apa DOUBLE(10, 2) NOT NULL
+)
+CREATE TABLE Chitanta (
+    nr INT(6) ,
+    data DATE NOT NULL,
+    id_ap INT(6) NOT NULL,
+    valoare DOUBLE(10, 2) NOT NULL
+)
+e)
+-alter table proprietar
+add constraint proprietar_id_prop_pk primary key (id_proprietar)
+-alter table apartament
+add constraint apartament_id_ap_pk primary key (id_ap)
+-alter table consum
+add constraint consum_id_ap_an_luna_pk primary key (id_ap,an,luna)
+-alter table chitanta
+add constraint chitanta_nr_pk primary key (nr)
+-alter table apartament
+add constraint apartament_id_prop_fk foreign key (id_proprietar) references proprietar(id_proprietar)
+-alter table consum
+add constraint consum_id_ap_fk foreign key (id_ap) references apartament(id_ap)
+-alter table chitanta
+add constraint chitanta_id_ap_fk FOREIGN KEY (id_ap) REFERENCES Apartament(id_ap)
+f)ALTER TABLE Proprietar
+MODIFY email VARCHAR(25)
+
+2:
+a)alter table consum
+add constraint consum_an_ck check (an>2000)
+b)alter table consum
+add constraint consum_nr_pers_ck check ((nr_pers=0 and valoare<100) or nr_pers!=0)
+
+3:
+a)select * from proprietar where nume like '%p' order by nume desc
+b)SELECT * FROM chitanta WHERE data>='01/jan/2023' and data<='31/dec/2023'  ORDER BY id_ap, valoare DESC;
+
+4:
+a)select p.nume as "Proprietar", a.adresa as"Adresa", a.nr_ap as "Numar Apartament", c.valoare as "Valoare" 
+from proprietar p join apartament a on p.id_proprietar=a.id_proprietar join consum c on a.id_ap=c.id_ap
+where c.luna=10 and an=2023 and a.adresa='Gherla Băișoara 6'
+b)select a1.id_ap, a2.id_ap
+from apartament a1 join apartament a2 on a1.adresa=a2.adresa and a1.suprafata=a2.suprafata and a1.id_ap!=a2.id_ap
+
+5:
+a)select * from consum where valoare <= ALL (select valoare from consum where luna=9 and an=2023) and luna=9 and an=2023
+b)select p.nume from proprietar p where p.id_proprietar in (select a1.id_proprietar from apartament a1 where exists (select a2.id_proprietar from apartament a2 where a1.id_proprietar=a2.id_proprietar and a1.id_ap!=a2.id_ap))
+
+6:
+a)select an, id_ap, min(valoare), avg(valoare), max(valoare) from consum group by an,id_ap
+b)select p.nume from proprietar p join apartament ap on p.id_proprietar=ap.id_proprietar join consum cs on ap.id_ap=cs.id_ap join chitanta ct on ct.id_ap=cs.id_ap 
+where ap.adresa='Gherla Baisoara 6'
+and ct.data='1/oct/2023'
+group by p.nume
+having sum(ct.valoare)<sum(cs.valoare)
+
+7:
+a)insert into consum (id_ap, an, luna, nr_pers, cantitate, valoare, pret_apa)
+values (4, 2023, 9, 3, 23, 150, 0)
+b)delete from proprietar
+where id_proprietar not in (select id_proprietar from apartament)
+c)update consum
+set nr_pers=0 , valoare=75
+where id_ap=11 and luna in(7,8) and an=2023
+
+8:
+create table exceptii
+(
+    nr INT(6) ,
+    data DATE NOT NULL,
+    id_ap INT(6) NOT NULL,
+    valoare DOUBLE(10, 2) NOT NULL,
+    exceptie VARCHAR(100)
+);
+
+CREATE OR REPLACE PROCEDURE insert_into_exceptii AS 
+begin
+    for chitanta_row in (select * from Chitanta)
+    loop
+        for consum_row in (select * from Consum where id_ap = chitanta_row.id_ap)
+        LOOP
+            if chitanta_row.valoare = consum_row.valoare then
+                if chitanta_row.data > TO_DATE(consum_row.an || '-' || consum_row.luna, 'YYYY-MM') then
+                    INSERT INTO Exceptii (nr, data, id_ap, valoare, exceptie)
+                    VALUES (chitanta_row.nr, chitanta_row.data, chitanta_row.id_ap, chitanta_row.valoare, 'Platit in avans');
+                end if;
+                if chitanta_row.data < TO_DATE(consum_row.an || '-' || consum_row.luna, 'YYYY-MM') then
+                    INSERT INTO Exceptii (nr, data, id_ap, valoare, exceptie)
+                    VALUES (chitanta_row.nr, chitanta_row.data, chitanta_row.id_ap, chitanta_row.valoare, 'Neplatit in prezent');
+                end if;
+            end if;
+        end loop;
+    end loop;
+end;
+
+
+
+9:
+a)
+create or replace trigger consum_data
+    before update on consum
+declare
+v_an NUMBER(4);
+declare v_luna NUMBER(2);
+declare v_datacons DATE;
+declare v_chit_Data DATE;
+begin
+    select consum.an,consum.luna into v_an,v_luna from consum;
+    select data into v_chit_data from chitanta;
+    v_datacons:=v_an||v_luna||'00';
+    if v_datacons>v_chit_data then
+        raise_application_error (-20001, 'Chitanta anterioara modificarii consum');
+    end if;
+end;
+
+a2)
+CREATE TRIGGER consum_data
+BEFORE UPDATE ON consum
+FOR EACH ROW
+BEGIN
+  DECLARE v_an INT(4), v_luna INT(2), v_datacons DATE, v_chit_data DATE;
+
+  SELECT c.an, c.luna, ch.data
+  INTO v_an, v_luna, v_chit_data
+  FROM consum c LEFT JOIN chitanta ch ON c.id_ap = ch.id_ap;
+
+  SET @v_datacons = CONCAT(v_an, '-', v_luna, '-00');
+
+  IF v_datacons >= v_chit_data THEN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Chitanta trebuie sa fie ulterioara consumului.';
+  END IF;
+END;
+
+b)
+CREATE OR REPLACE TRIGGER insert_into_consum_ap_turda
+INSTEAD OF INSERT ON Consum_Ap_Turda
+FOR EACH ROW
+BEGIN
+    INSERT INTO Proprietar 
+    (id_proprietar, nume, email)
+    VALUES (:new.id_proprietar, :new.nume, :new.email);
+
+    INSERT INTO Apartament 
+    (id_ap, adresa, nr_ap, suprafata, id_proprietar)
+    VALUES (:new.id_ap, :apartamentid_apadresanew.adresa, :new.nr_ap, :new.suprafata, :new.id_proprietar);
+
+    INSERT INTO Consum 
+    (id_ap, an, luna, nr_pers, cantitate, valoare, pret_apa)
+    VALUES (:new.id_ap, :new.an, :new.luna, :new.nr_pers, :new.cantitate, :new.valoare, :new.pret_apa);
+END;
+
+
+insert into Consum (id_ap, an, luna, nr_pers, cantitate, valoare, pret_apa)
+values 
+#(1, 2023, 10, 2, 50, 100.00, 2.00)
+#(2, 2023, 1, 3, 75, 150, 2)
+#(3, 2023, 1, 4, 100, 200.00, 2.00)
+#(4, 2023, 2, 2, 45, 90.00, 2.00)
+#(5, 2023, 10, 3, 70, 140.00, 2.00)
+#(6, 2022, 2, 4, 85, 170.00, 2.00)
+#(7, 2023, 10, 2, 40, 80.00, 2.00)
+#(8, 2023, 11, 3, 65, 130.00, 2.00)
+#(9, 2023, 10, 4, 90, 180.00, 2.00)
+#(10, 2023, 4, 2, 35, 70.00, 2.00)
+#(11, 2023, 4, 3, 60, 120.00, 2.00)
+#(12, 2023, 10, 4, 80, 160.00, 2.00)
+#(13, 2023, 5, 2, 30, 60.00, 2.00)
+#(14, 2023, 5, 3, 55, 110.00, 2.00)
+#(15, 2023, 5, 4, 75, 150.00, 2.00)
+#(16, 2023, 11, 2, 25, 50.00, 2.00)
+#(17, 2022, 6, 3, 50, 100.00, 2.00)
+#(18, 2023, 6, 4, 65, 130.00, 2.00)
+#(19, 2023, 7, 2, 20, 40.00, 2.00)
+#(20, 2023, 7, 3, 45, 90.00, 2.00)
+#(21, 2023, 10, 3, 45, 90.00, 2.00)
+#(4, 2023, 9, 3, 23, 150, 0)
+#(11, 2023, 7, 0, 0, 75, 0)
+#(22, 2023, 4, 2, 30, 60, 2)
+#(22, 2023, 10, 2, 5, 10, 2)
+#(24, 2023, 10, 2, 80, 160, 2)
+
+insert into Chitanta (nr, data, id_ap, valoare)
+values 
+#(1, '2023-02-01', 1, 60.00)
+#(2, '2023-03-01', 2, 150.00)
+#(3, '2023-01-01', 3, 200.00)
+#(4, '2023-10-01', 4, 90.00)
+#(5, '2023-02-01', 5, 140.00)
+#(6, '2023-10-01', 6, 170.00)
+#(7, '2023-11-01', 7, 80.00)
+#(8, '2023-10-01', 8, 130.00)
+#(9, '2023-04-01', 9, 180.00)
+#(10, '2023-04-01', 10, 70.00)
+#(11, '2023-10-01', 11, 120.00)
+#(12, '2023-05-01', 12, 160.00)
+#(13, '2023-05-01', 13, 60.00)
+#(14, '2023-05-01', 14, 110.00)
+#(15, '2023-11-01', 15, 150.00)
+#(16, '2023-06-01', 16, 50.00)
+#(17, '2023-06-01', 17, 100.00)
+#(18, '2023-06-01', 18, 130.00)
+#(19, '2023-07-01', 19, 40.00)
+#(20, '2023-07-01', 20, 90.00)
+#(21, '2023-10-01', 20, 90.00)
+#(22, '2023-04-01', 5, 50)!
+#(23, '2023-09-01', 8, 100)
+#(24, '2022-12-01', 3, 100)
+#(25, '2023-04-01', 22, 60)
+#(26, '2023-10-01', 24, 100)
+
+SET SQL_SAFE_UPDATES = 0;
+update chitanta
+set data='2022-12-01'
+where nr=24;
+SET SQL_SAFE_UPDATES = 1;
+
+insert into Proprietar (id_proprietar, nume, email)
+values 
+#(6, 'Andrei Andreea', 'andrei.a@gmail.com')
+#(16,'Davidescu Elena', 'davidescu.e@aol.com')
+#(4, 'Florea Ana', 'florea.a@aol.com')
+#(21, 'Pavel Lup', 'pavel.l@yahoo.com')
+#(2, 'Popescu Maria', 'popescu.m@gmail.com')
+#(10, 'Dumitrescu Ioana','dumitrescu.i@gmail.com')
+#(18, 'Nedelcu Andreea', 'nedelcu.a@gmail.com')
+#(19, 'Mihaiescu Bogdan', 'mihaiescu.b@hotmail.com')
+#(20, 'Ionescu Ana', 'ionescu.a@aol.com')
+#(9, 'Cojocaru Alexandru', 'cojocaru.a@yahoo.com')
+#(7, 'Tanase Bogdan', 'tanase.b@hotmail.com')
+#(12, 'Georgescu Gabriela', 'georgescu.g@aol.com')
+#(8, 'Ionascu Cristina', 'ionascu.c@aol.com')
+#(11, 'Stancu Teodor', 'stancu.t@hotmail.com')
+#(5, 'Petrescu Mihai', 'petrescu.m@yahoo.com')
+#(17, 'Constantinescu Ionel', 'constantinescu.i@aol.com')
+#(3, 'Vasile Gheorghe', 'vasile.g@hotmail.com')
+#(15, 'Popa Mircea', 'popa.m@hotmail.com')
+#(14, 'Stefanescu Diana', 'stefanescu.d@gmail.com')
+#(13, 'Matei Andrei', 'matei.a@yahoo.com')
+#(1, 'Ionescu Ion', 'ionescu.i@yahoo.com')
+
+insert into apartament (id_ap, adresa, nr_ap, suprafata, id_proprietar)
+values 
+#(20, 'Brasov, Zorilor nr.20', 20, 100, 20)
+#(24, 'Gherla Băișoara 6', 24, 35, 21)
+#(16, 'Brasov, Unirii nr.16', 16, 40, 16)
+#(1, 'Str. Bucuresti, nr. 1', 1, 40, 1)
+#(5, 'bucuresti, Primaverii nr.1', 5, 50, 5)
+#(6, 'bucuresti, Primaverii nr.6', 6, 60, 6)
+#(8, 'bucuresti, Primaverii nr.8', 8, 80, 8)
+#(18, 'Brasov, Unirii nr.18', 18, 60, 18)
+#(9, 'Timisoara, Garii nr.9', 9, 40, 9)
+#(12, 'Cluj, Republicii nr.12', 12, 50, 12)
+#(22, 'Gherla Băișoara 6', 22, 80, 21)
+#(23, 'bucuresti, Primaverii nr.1', 23, 50, 10)
+#(10, 'Timisoara, Garii nr.10', 10, 50, 10)
+#(7, 'bucuresti, Primaverii nr.7', 7, 70, 7)
+#(13, 'Cluj, Republicii nr.13', 13, 50, 13)
+#(14, 'Cluj, Republicii nr.14', 14, 60, 14)
+#(2, 'bucuresti, Primaverii nr.2', 2, 60, 2)
+#(15, 'Cluj, Republicii nr.15', 15, 70, 15)
+#(17, 'Brasov, Unirii nr.17', 17, 50, 17)
+#(19, 'Brasov, Unirii nr.19', 19, 70, 19)
+#(21, 'Gherla Băișoara 6', 21, 50, 21)
+#(3, 'bucuresti, Primaverii nr.3', 3, 70, 3)
+#(11, 'cluj, obs nr.33', 11, 60, 11)
+#(4, 'cluj, obs nr.34', 1, 50, 1)
+
+update apartament
+set adresa='Gherla Baisoara 6'
+where adresa='Gherla Băișoara 6'
+
+DELIMITER $$
+create procedure tabela_apartament ()
+begin
+	select * from apartament;
+end $$
+DELIMITER ;
+
+call tabela_apartament
