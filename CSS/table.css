@@ -1,0 +1,32 @@
+table {
+    width: 100%;
+    border: 1px solid #ddd;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    tr:nth-of-type(even) {
+        background-color:#ccc;
+      }
+    tr:nth-of-type(odd) {
+        background-color:#626262;
+      }
+}
+
+th {
+    background-color: #eee;
+    padding: 10px 15px;
+    text-align: left;
+    font-weight: bold;
+}
+
+td {
+    padding: 10px 15px;
+    text-align: left;
+}
+
+body {
+    background-image: url("img-homepage.jpeg");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-attachment: fixed;
+    background-size: cover;
+  }
